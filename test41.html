@@ -1,0 +1,1961 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestion des Congés - Gaz Service</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'gaz-blue': '#1e40af',
+                        'gaz-green': '#10b981',
+                        'gaz-light-blue': '#dbeafe',
+                        'gaz-dark-blue': '#1e3a8a',
+                    },
+                    fontFamily: {
+                        'modern': ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+                    },
+                    boxShadow: {
+                        'modern': '0 4px 20px rgba(0, 0, 0, 0.08)',
+                        'card': '0 2px 12px rgba(0, 0, 0, 0.05)',
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Firebase SDK v8 -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    
+    <!-- EmailJS pour les notifications -->
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #1e40af 0%, #10b981 100%);
+        }
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .hover-scale {
+            transition: transform 0.2s ease-in-out;
+        }
+        .hover-scale:hover {
+            transform: translateY(-2px);
+        }
+        .modern-card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            border: 1px solid rgba(229, 231, 235, 0.5);
+        }
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .btn-modern {
+            background: linear-gradient(135deg, #1e40af, #3b82f6);
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-weight: 600;
+            padding: 12px 24px;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-size: 0.875rem;
+        }
+        .btn-modern:hover {
+            background: linear-gradient(135deg, #1e3a8a, #2563eb);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(30, 64, 175, 0.3);
+        }
+        .input-modern {
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 12px 16px;
+            transition: all 0.3s ease;
+            background: #fafafa;
+        }
+        .input-modern:focus {
+            border-color: #1e40af;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.1);
+            outline: none;
+        }
+        .tab-modern {
+            position: relative;
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            background: transparent;
+            border: 2px solid transparent;
+        }
+        .tab-modern.active {
+            background: linear-gradient(135deg, #1e40af, #10b981);
+            color: white;
+            box-shadow: 0 4px 15px rgba(30, 64, 175, 0.3);
+        }
+        .tab-modern:not(.active) {
+            color: #6b7280;
+            border-color: #e5e7eb;
+        }
+        .tab-modern:not(.active):hover {
+            background: #f9fafb;
+            border-color: #d1d5db;
+            color: #374151;
+        }
+    </style>
+    
+    <script>
+        // Configuration Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyDH9xrEByGfjpnJMbcrZzl20A_7cXNUBRk",
+            authDomain: "gestion-conges-820b7.firebaseapp.com",
+            projectId: "gestion-conges-820b7",
+            storageBucket: "gestion-conges-820b7.firebasestorage.app",
+            messagingSenderId: "1054299846910",
+            appId: "1:1054299846910:web:a184c4cdf03cb9c6e14daf"
+        };
+
+        // Variables globales
+        let db = null;
+        let currentTab = 'login';
+        let currentUser = null;
+        let allEmployees = [];
+        
+        // Configuration EmailJS
+        let emailConfig = {
+            serviceId: '',
+            templateId: '',
+            publicKey: '',
+            employerEmail: '',
+            isConfigured: false
+        };
+
+        // Initialisation Firebase
+        function initializeFirebaseApp() {
+            try {
+                firebase.initializeApp(firebaseConfig);
+                db = firebase.firestore();
+                console.log('Firebase initialisé avec succès');
+                
+                document.getElementById('firebaseStatus').innerHTML = `
+                    <div class="modern-card p-4 mb-6 border-l-4 border-green-500">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <svg class="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                </svg>
+                            </div>
+                            <div class="ml-3">
+                                <p class="font-semibold text-green-800">Firebase Connecté</p>
+                                <p class="text-green-700 text-sm">Application prête avec gestion des identifiants salariés</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                loadEmployees();
+                setTimeout(updateEmployeeCount, 1000);
+                loadEmailConfig();
+                
+            } catch (error) {
+                console.error('Erreur d\'initialisation Firebase:', error);
+                document.getElementById('firebaseStatus').innerHTML = `
+                    <div class="modern-card p-4 mb-6 border-l-4 border-red-500">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <svg class="w-5 h-5 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+                                </svg>
+                            </div>
+                            <div class="ml-3">
+                                <p class="font-semibold text-red-800">Erreur Firebase</p>
+                                <p class="text-red-700 text-sm">Erreur: ${error.message}</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        // Charger la liste des employés
+        function loadEmployees() {
+            if (!db) return;
+            
+            console.log('Chargement des employés...');
+            return db.collection('employees').get().then((querySnapshot) => {
+                allEmployees = [];
+                querySnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    allEmployees.push({ id: doc.id, ...data });
+                    console.log('Employé chargé:', {
+                        id: data.employeeId, 
+                        nom: data.firstName + ' ' + data.lastName,
+                        email: data.email || 'PAS D\'EMAIL'
+                    });
+                });
+                console.log(`${allEmployees.length} employés chargés au total`);
+                updateEmployeeCount();
+                return allEmployees;
+            }).catch((error) => {
+                console.error('Erreur lors du chargement des employés:', error);
+                return [];
+            });
+        }
+
+        // Mettre à jour l'indicateur du nombre d'employés
+        function updateEmployeeCount() {
+            const indicator = document.getElementById('employeeCount');
+            if (indicator) {
+                indicator.textContent = `${allEmployees.length} employés dans la base`;
+            }
+        }
+
+        // Gestion de l'affichage des onglets selon le rôle
+        function updateTabsVisibility() {
+            const loginTab = document.getElementById('loginTab');
+            const employeeTab = document.getElementById('employeeTab');
+            const employerTab = document.getElementById('employerTab');
+            const adminTab = document.getElementById('adminTab');
+
+            [loginTab, employeeTab, employerTab, adminTab].forEach(tab => {
+                if (tab) tab.classList.remove('hidden');
+            });
+
+            if (!currentUser) {
+                employeeTab?.classList.add('hidden');
+                employerTab?.classList.add('hidden');
+                console.log('Non connecté - Connexion et Administration visibles');
+            } else if (currentUser.role === 'employer') {
+                console.log('Employeur connecté - tous les onglets visibles');
+            } else {
+                employerTab?.classList.add('hidden');
+                adminTab?.classList.add('hidden');
+                console.log('Salarié connecté - onglets Employeur et Administration masqués');
+            }
+        }
+
+        function showTab(tabName) {
+            if (tabName === 'admin') {
+                if (currentUser && currentUser.role === 'employer') {
+                    // OK
+                } else {
+                    const adminPassword = prompt('Accès Administration\nVeuillez saisir le mot de passe administrateur :');
+                    if (adminPassword !== 'admin123') {
+                        alert('Mot de passe incorrect. Accès refusé.');
+                        return;
+                    }
+                }
+            }
+
+            const tabs = ['login', 'employee', 'employer', 'admin'];
+            tabs.forEach(tab => {
+                const tabElement = document.getElementById(tab + 'Tab');
+                const panelElement = document.getElementById(tab + 'Panel');
+                
+                if (tabElement && panelElement) {
+                    tabElement.classList.remove('active');
+                    panelElement.classList.add('hidden');
+                }
+            });
+            
+            const activeTab = document.getElementById(tabName + 'Tab');
+            const activePanel = document.getElementById(tabName + 'Panel');
+            
+            if (activeTab && activePanel) {
+                activeTab.classList.add('active');
+                activePanel.classList.remove('hidden');
+            }
+            
+            currentTab = tabName;
+            
+            if (tabName === 'employee' || tabName === 'employer') {
+                loadLeaveRequests();
+            }
+        }
+
+        // Connexion par identifiant
+        function loginEmployee() {
+            const employeeId = document.getElementById('loginEmployeeId').value.trim();
+            
+            console.log('Tentative de connexion avec ID:', employeeId);
+            console.log('Nombre d\'employés disponibles:', allEmployees.length);
+            
+            if (!employeeId) {
+                alert('Veuillez saisir votre identifiant');
+                return;
+            }
+
+            if (allEmployees.length === 0) {
+                alert('Aucun employé n\'est encore importé. Contactez l\'administrateur.');
+                console.log('Liste des employés vide');
+                return;
+            }
+
+            console.log('Recherche de l\'employé...');
+            const employee = allEmployees.find(emp => {
+                const empId = emp.employeeId;
+                console.log('Comparaison:', empId, 'avec', employeeId);
+                return empId && empId.toString().toLowerCase() === employeeId.toLowerCase();
+            });
+
+            console.log('Employé trouvé:', employee);
+
+            if (employee) {
+                currentUser = employee;
+                console.log('Connexion réussie pour:', employee.firstName, employee.lastName);
+                
+                document.getElementById('userInfo').innerHTML = `
+                    <div class="modern-card p-4 mb-6 border-l-4 border-blue-500">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center">
+                                <div class="flex-shrink-0">
+                                    <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-green-500 rounded-full flex items-center justify-center">
+                                        <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path>
+                                        </svg>
+                                    </div>
+                                </div>
+                                <div class="ml-4">
+                                    <p class="font-semibold text-blue-800">${employee.firstName} ${employee.lastName}</p>
+                                    <p class="text-blue-600 text-sm">ID: ${employee.employeeId} • Salarié</p>
+                                </div>
+                            </div>
+                            <button onclick="logout()" class="btn-modern bg-gradient-to-r from-red-500 to-red-600 text-sm px-4 py-2">
+                                Déconnexion
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                updateTabsVisibility();
+                showTab('employee');
+                document.getElementById('loginEmployeeId').value = '';
+            } else {
+                console.log('Identifiant non trouvé');
+                console.log('IDs disponibles:', allEmployees.map(emp => emp.employeeId));
+                alert(`Identifiant "${employeeId}" non trouvé.\n\nIDs disponibles: ${allEmployees.map(emp => emp.employeeId).slice(0, 5).join(', ')}${allEmployees.length > 5 ? '...' : ''}`);
+            }
+        }
+
+        // Configuration EmailJS - VERSION FIREBASE
+        async function saveEmailConfig() {
+            const serviceId = document.getElementById('emailServiceId').value.trim();
+            const templateId = document.getElementById('emailTemplateId').value.trim();
+            const publicKey = document.getElementById('emailPublicKey').value.trim();
+            const employerEmail = document.getElementById('employerEmail').value.trim();
+
+            if (!serviceId || !templateId || !publicKey || !employerEmail) {
+                alert('Veuillez remplir tous les champs de configuration email');
+                return;
+            }
+
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(employerEmail)) {
+                alert('Veuillez saisir une adresse email valide');
+                return;
+            }
+
+            emailConfig = {
+                serviceId,
+                templateId,
+                publicKey,
+                employerEmail,
+                isConfigured: true,
+                lastUpdated: new Date().toISOString()
+            };
+
+            try {
+                emailjs.init(publicKey);
+                console.log('EmailJS initialisé avec la clé:', publicKey);
+
+                // Sauvegarder dans Firebase ET localStorage (fallback)
+                if (db) {
+                    await db.collection('settings').doc('emailConfig').set({
+                        ...emailConfig,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    console.log('Configuration email sauvegardée dans Firebase');
+                }
+                
+                // Sauvegarde locale en fallback
+                localStorage.setItem('emailConfig', JSON.stringify(emailConfig));
+
+                document.getElementById('emailStatus').innerHTML = `
+                    <div class="modern-card p-4 border-l-4 border-green-500">
+                        <div class="flex items-center">
+                            <svg class="w-5 h-5 text-green-500 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span class="font-semibold text-green-800">Configuration email sauvegardée dans Firebase - Notifications activées</span>
+                        </div>
+                    </div>
+                `;
+                
+                updateNotificationStatus(true);
+                alert('Configuration email sauvegardée dans Firebase !');
+                
+            } catch (error) {
+                console.error('Erreur sauvegarde config email:', error);
+                alert('Erreur lors de la sauvegarde: ' + error.message);
+            }
+        }
+
+        function updateNotificationStatus(isConfigured) {
+            const notificationStatusEl = document.getElementById('notificationStatus');
+            if (notificationStatusEl) {
+                if (isConfigured) {
+                    notificationStatusEl.innerHTML = `
+                        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"></path>
+                                <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"></path>
+                            </svg>
+                            Notifications email activées
+                        </span>
+                    `;
+                } else {
+                    notificationStatusEl.innerHTML = `
+                        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                            <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                            </svg>
+                            Notifications email non configurées
+                        </span>
+                    `;
+                }
+            }
+        }
+
+        // Charger la configuration email - VERSION FIREBASE
+        async function loadEmailConfig() {
+            let configLoaded = false;
+            
+            // 1. Essayer de charger depuis Firebase
+            if (db) {
+                try {
+                    console.log('Chargement configuration email depuis Firebase...');
+                    const doc = await db.collection('settings').doc('emailConfig').get();
+                    
+                    if (doc.exists) {
+                        const firebaseConfig = doc.data();
+                        console.log('Configuration trouvée dans Firebase:', firebaseConfig);
+                        
+                        // Vérifier que la config est complète
+                        if (firebaseConfig.serviceId && firebaseConfig.templateId && 
+                            firebaseConfig.publicKey && firebaseConfig.employerEmail) {
+                            
+                            emailConfig = {
+                                serviceId: firebaseConfig.serviceId,
+                                templateId: firebaseConfig.templateId,
+                                publicKey: firebaseConfig.publicKey,
+                                employerEmail: firebaseConfig.employerEmail,
+                                isConfigured: true,
+                                lastUpdated: firebaseConfig.lastUpdated || firebaseConfig.updatedAt?.toDate?.()?.toISOString()
+                            };
+                            
+                            // Initialiser EmailJS
+                            emailjs.init(emailConfig.publicKey);
+                            console.log('Configuration EmailJS chargée depuis Firebase');
+                            
+                            // Pré-remplir les champs
+                            fillEmailConfigFields();
+                            
+                            document.getElementById('emailStatus').innerHTML = `
+                                <div class="modern-card p-4 border-l-4 border-green-500">
+                                    <div class="flex items-center">
+                                        <svg class="w-5 h-5 text-green-500 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                        </svg>
+                                        <div>
+                                            <span class="font-semibold text-green-800">Configuration email chargée depuis Firebase</span>
+                                            <p class="text-green-700 text-sm">Notifications activées - Dernière MÀJ: ${firebaseConfig.lastUpdated ? new Date(firebaseConfig.lastUpdated).toLocaleString('fr-FR') : 'Inconnue'}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                            
+                            updateNotificationStatus(true);
+                            configLoaded = true;
+                            
+                            // Sauvegarder aussi en local comme backup
+                            localStorage.setItem('emailConfig', JSON.stringify(emailConfig));
+                        }
+                    } else {
+                        console.log('Aucune configuration email trouvée dans Firebase');
+                    }
+                } catch (error) {
+                    console.error('Erreur chargement Firebase:', error);
+                }
+            }
+            
+            // 2. Fallback sur localStorage si Firebase a échoué
+            if (!configLoaded) {
+                const saved = localStorage.getItem('emailConfig');
+                if (saved) {
+                    try {
+                        emailConfig = JSON.parse(saved);
+                        
+                        if (emailConfig.isConfigured) {
+                            emailjs.init(emailConfig.publicKey);
+                            console.log('Configuration EmailJS chargée depuis localStorage (fallback)');
+                            
+                            fillEmailConfigFields();
+                            
+                            document.getElementById('emailStatus').innerHTML = `
+                                <div class="modern-card p-4 border-l-4 border-yellow-500">
+                                    <div class="flex items-center">
+                                        <svg class="w-5 h-5 text-yellow-500 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                        </svg>
+                                        <div>
+                                            <span class="font-semibold text-yellow-800">Configuration chargée depuis le navigateur</span>
+                                            <p class="text-yellow-700 text-sm">Recommandé: Resauvegarder pour synchroniser avec Firebase</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                            
+                            updateNotificationStatus(true);
+                            configLoaded = true;
+                        }
+                    } catch (error) {
+                        console.error('Erreur chargement localStorage:', error);
+                    }
+                }
+            }
+            
+            // 3. Aucune configuration trouvée
+            if (!configLoaded) {
+                console.log('Aucune configuration email trouvée');
+                updateNotificationStatus(false);
+            }
+        }
+
+        // Fonction utilitaire pour pré-remplir les champs
+        function fillEmailConfigFields() {
+            const fields = [
+                { id: 'emailServiceId', key: 'serviceId' },
+                { id: 'emailTemplateId', key: 'templateId' },
+                { id: 'emailPublicKey', key: 'publicKey' },
+                { id: 'employerEmail', key: 'employerEmail' }
+            ];
+            
+            fields.forEach(field => {
+                const element = document.getElementById(field.id);
+                if (element && emailConfig[field.key]) {
+                    element.value = emailConfig[field.key];
+                }
+            });
+        }
+
+        // Réinitialiser la configuration email
+        async function resetEmailConfig() {
+            if (!confirm('Êtes-vous sûr de vouloir réinitialiser la configuration email ? Cette action est irréversible.')) {
+                return;
+            }
+
+            try {
+                // Supprimer de Firebase
+                if (db) {
+                    await db.collection('settings').doc('emailConfig').delete();
+                    console.log('Configuration supprimée de Firebase');
+                }
+                
+                // Supprimer du localStorage
+                localStorage.removeItem('emailConfig');
+                
+                // Réinitialiser la config locale
+                emailConfig = {
+                    serviceId: '',
+                    templateId: '',
+                    publicKey: '',
+                    employerEmail: '',
+                    isConfigured: false
+                };
+                
+                // Vider les champs
+                ['emailServiceId', 'emailTemplateId', 'emailPublicKey', 'employerEmail'].forEach(fieldId => {
+                    const element = document.getElementById(fieldId);
+                    if (element) element.value = '';
+                });
+                
+                // Mettre à jour le statut
+                document.getElementById('emailStatus').innerHTML = `
+                    <div class="modern-card p-4 border-l-4 border-gray-500">
+                        <div class="flex items-center">
+                            <svg class="w-5 h-5 text-gray-500 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span class="font-semibold text-gray-800">Configuration email réinitialisée</span>
+                        </div>
+                    </div>
+                `;
+                
+                updateNotificationStatus(false);
+                alert('Configuration email réinitialisée avec succès');
+                
+            } catch (error) {
+                console.error('Erreur lors de la réinitialisation:', error);
+                alert('Erreur lors de la réinitialisation: ' + error.message);
+            }
+        }
+
+        async function sendEmailNotification(type, data) {
+            if (!emailConfig.isConfigured) {
+                console.log('EmailJS non configuré - notification ignorée');
+                return false;
+            }
+
+            if (typeof emailjs === 'undefined') {
+                console.error('EmailJS non chargé');
+                return false;
+            }
+
+            let templateParams = {};
+
+            try {
+                switch (type) {
+                    case 'newRequest':
+                        templateParams = {
+                            to_email: emailConfig.employerEmail,
+                            from_name: 'Système de Gestion des Congés',
+                            employee_name: data.employeeName,
+                            employee_id: data.employeeId || 'N/A',
+                            leave_type: data.leaveType,
+                            start_date: formatDate(data.startDate),
+                            end_date: formatDate(data.endDate),
+                            reason: data.reason || 'Aucun motif spécifié',
+                            message: `${data.employeeName} a soumis une nouvelle demande de congé de type "${data.leaveType}" du ${formatDate(data.startDate)} au ${formatDate(data.endDate)}.`,
+                            subject: `Nouvelle demande de congé - ${data.employeeName}`
+                        };
+                        break;
+
+                    case 'requestUpdated':
+                        templateParams = {
+                            to_email: data.employeeEmail || emailConfig.employerEmail,
+                            from_name: 'Système de Gestion des Congés',
+                            employee_name: data.employeeName,
+                            employee_id: data.employeeId || 'N/A',
+                            leave_type: data.leaveType,
+                            start_date: formatDate(data.startDate),
+                            end_date: formatDate(data.endDate),
+                            reason: data.reason || 'Aucun motif spécifié',
+                            status: data.status,
+                            message: `Votre demande de congé de type "${data.leaveType}" du ${formatDate(data.startDate)} au ${formatDate(data.endDate)} a été ${data.status.toLowerCase()}.`,
+                            subject: `Demande de congé ${data.status.toLowerCase()} - ${data.employeeName}`
+                        };
+                        break;
+
+                    default:
+                        console.error('Type de notification non reconnu:', type);
+                        return false;
+                }
+
+                console.log('Envoi email avec params:', templateParams);
+
+                const response = await emailjs.send(
+                    emailConfig.serviceId,
+                    emailConfig.templateId,
+                    templateParams
+                );
+
+                console.log('Email envoyé avec succès:', response);
+                showNotificationMessage('Email envoyé avec succès', 'success');
+                return true;
+
+            } catch (error) {
+                console.error('Erreur envoi email:', error);
+                showNotificationMessage(`Erreur envoi email: ${error.text || error.message}`, 'error');
+                return false;
+            }
+        }
+
+        function showNotificationMessage(message, type) {
+            const existingMsg = document.getElementById('tempNotification');
+            if (existingMsg) {
+                existingMsg.remove();
+            }
+
+            const bgColor = type === 'success' ? 'bg-green-100 border-green-500 text-green-700' : 'bg-red-100 border-red-500 text-red-700';
+            
+            const notificationDiv = document.createElement('div');
+            notificationDiv.id = 'tempNotification';
+            notificationDiv.className = `fixed top-4 right-4 ${bgColor} border-l-4 p-4 rounded-lg shadow-lg z-50 max-w-sm modern-card`;
+            notificationDiv.innerHTML = `
+                <div class="flex justify-between items-center">
+                    <span class="text-sm font-medium">${message}</span>
+                    <button onclick="this.parentElement.parentElement.remove()" class="ml-2 text-lg font-bold hover:opacity-70">&times;</button>
+                </div>
+            `;
+            
+            document.body.appendChild(notificationDiv);
+            
+            setTimeout(() => {
+                if (notificationDiv && notificationDiv.parentNode) {
+                    notificationDiv.remove();
+                }
+            }, 5000);
+        }
+
+        async function testEmailSending() {
+            if (!emailConfig.isConfigured) {
+                alert('Veuillez d\'abord configurer EmailJS');
+                return;
+            }
+
+            const testButton = document.querySelector('button[onclick="testEmailSending()"]');
+            const originalText = testButton.textContent;
+            testButton.textContent = 'Envoi en cours...';
+            testButton.disabled = true;
+
+            const testData = {
+                employeeName: 'Test Utilisateur',
+                employeeId: 'TEST001',
+                leaveType: 'Test de notification',
+                startDate: new Date().toISOString().split('T')[0],
+                endDate: new Date().toISOString().split('T')[0],
+                reason: 'Test du système de notification'
+            };
+
+            try {
+                const success = await sendEmailNotification('newRequest', testData);
+                if (success) {
+                    alert('Email de test envoyé avec succès ! Vérifiez votre boîte de réception.');
+                } else {
+                    alert('Erreur lors de l\'envoi de l\'email de test. Vérifiez la configuration.');
+                }
+            } catch (error) {
+                console.error('Erreur test email:', error);
+                alert('Erreur lors du test: ' + error.message);
+            } finally {
+                testButton.textContent = originalText;
+                testButton.disabled = false;
+            }
+        }
+
+        function showAvailableIds() {
+            if (allEmployees.length === 0) {
+                alert('Aucun employé importé pour le moment.');
+                return;
+            }
+
+            const ids = allEmployees.map(emp => `${emp.employeeId} (${emp.firstName} ${emp.lastName})`);
+            const message = `IDs d'employés disponibles:\n\n${ids.slice(0, 10).join('\n')}${ids.length > 10 ? `\n\n... et ${ids.length - 10} autres` : ''}`;
+            
+            alert(message);
+        }
+
+        function loginEmployer() {
+            const password = document.getElementById('loginPassword').value;
+            
+            if (password === 'admin123') {
+                currentUser = { role: 'employer', name: 'Administrateur' };
+                document.getElementById('userInfo').innerHTML = `
+                    <div class="modern-card p-4 mb-6 border-l-4 border-green-500">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center">
+                                <div class="flex-shrink-0">
+                                    <div class="w-10 h-10 bg-gradient-to-br from-green-500 to-blue-500 rounded-full flex items-center justify-center">
+                                        <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.916A5.986 5.986 0 0010 16a5.986 5.986 0 004.546-2.084A5 5 0 0010 11z" clip-rule="evenodd"></path>
+                                        </svg>
+                                    </div>
+                                </div>
+                                <div class="ml-4">
+                                    <p class="font-semibold text-green-800">Administrateur</p>
+                                    <p class="text-green-600 text-sm">Employeur • Accès complet</p>
+                                </div>
+                            </div>
+                            <button onclick="logout()" class="btn-modern bg-gradient-to-r from-red-500 to-red-600 text-sm px-4 py-2">
+                                Déconnexion
+                            </button>
+                        </div>
+                    </div>
+                `;
+                showTab('employer');
+                document.getElementById('loginPassword').value = '';
+            } else {
+                alert('Mot de passe incorrect');
+            }
+        }
+
+        function logout() {
+            currentUser = null;
+            document.getElementById('userInfo').innerHTML = '';
+            updateTabsVisibility();
+            showTab('login');
+        }
+
+        // Import Excel
+        function handleExcelFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const sheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[sheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+                    displayExcelPreview(jsonData);
+                } catch (error) {
+                    alert('Erreur lors de la lecture du fichier Excel: ' + error.message);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function displayExcelPreview(data) {
+            if (data.length === 0) {
+                alert('Le fichier Excel est vide');
+                return;
+            }
+
+            const preview = document.getElementById('excelPreview');
+            const headers = Object.keys(data[0]);
+            
+            let html = `
+                <div class="modern-card p-6 mb-4">
+                    <h3 class="font-semibold text-lg mb-4 text-gray-800">Aperçu des données (${data.length} lignes)</h3>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full">
+                            <thead>
+                                <tr class="bg-gray-50 border-b">
+                                    ${headers.map(header => `<th class="p-3 text-left font-medium text-gray-700">${header}</th>`).join('')}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${data.slice(0, 5).map((row, index) => `
+                                    <tr class="border-b hover:bg-gray-50">
+                                        ${headers.map(header => `<td class="p-3 text-gray-600">${row[header] || ''}</td>`).join('')}
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                    ${data.length > 5 ? `<p class="text-gray-500 mt-4 text-sm">... et ${data.length - 5} autres lignes</p>` : ''}
+                </div>
+                <button onclick="importEmployees(${JSON.stringify(data).replace(/"/g, '&quot;')})" 
+                        class="btn-modern bg-gradient-to-r from-green-500 to-green-600">
+                    Importer les employés
+                </button>
+            `;
+            
+            preview.innerHTML = html;
+        }
+
+        function importEmployees(data) {
+            if (!db) {
+                alert('Firebase non disponible');
+                return;
+            }
+
+            console.log('=== DEBUGGING IMPORT EXCEL ===');
+            console.log('Données brutes Excel:', data);
+            
+            if (data.length === 0) {
+                alert('Aucune donnée à importer');
+                return;
+            }
+
+            const firstRow = data[0];
+            console.log('Colonnes disponibles:', Object.keys(firstRow));
+
+            const batch = db.batch();
+            let importCount = 0;
+            let skippedCount = 0;
+
+            data.forEach((row, index) => {
+                console.log(`Ligne ${index + 1}:`, row);
+                
+                const employee = {
+                    employeeId: getColumnValue(row, ['ID', 'id', 'Identifiant', 'identifiant', 'Employee ID', 'employee_id', 'EmployeeID']) || `EMP${String(index + 1).padStart(3, '0')}`,
+                    firstName: getColumnValue(row, ['Prénom', 'prenom', 'First Name', 'firstname', 'first_name', 'FirstName', 'Prenom']) || '',
+                    lastName: getColumnValue(row, ['Nom', 'nom', 'Last Name', 'lastname', 'last_name', 'LastName']) || '',
+                    email: getColumnValue(row, ['Email', 'email', 'E-mail', 'e-mail', 'EMAIL', 'Mail', 'mail']) || '',
+                    department: getColumnValue(row, ['Service', 'service', 'Department', 'department', 'Département', 'departement']) || '',
+                    position: getColumnValue(row, ['Poste', 'poste', 'Position', 'position', 'Fonction', 'fonction']) || '',
+                    manager: getColumnValue(row, ['Manager', 'manager', 'Responsable', 'responsable', 'Chef', 'chef']) || '',
+                    createdAt: new Date().toISOString()
+                };
+
+                console.log(`Employé mappé ${index + 1}:`, employee);
+
+                if (employee.employeeId && (employee.firstName || employee.lastName)) {
+                    const docRef = db.collection('employees').doc();
+                    batch.set(docRef, employee);
+                    importCount++;
+                    console.log(`✅ Employé ${employee.employeeId} ajouté à l'import`);
+                } else {
+                    skippedCount++;
+                    console.log(`❌ Employé ligne ${index + 1} ignoré - données insuffisantes`);
+                }
+            });
+
+            console.log(`Import préparé: ${importCount} employés, ${skippedCount} ignorés`);
+
+            batch.commit().then(() => {
+                alert(`✅ ${importCount} employés importés avec succès !${skippedCount > 0 ? ` (${skippedCount} lignes ignorées)` : ''}`);
+                
+                loadEmployees().then(() => {
+                    console.log('=== VÉRIFICATION POST-IMPORT ===');
+                    allEmployees.forEach(emp => {
+                        console.log(`Employé vérifié: ${emp.employeeId} - ${emp.firstName} ${emp.lastName} - Email: "${emp.email}"`);
+                    });
+                    console.log('=== FIN VÉRIFICATION ===');
+                    
+                    updateEmployeeCount();
+                    displayEmployeesList();
+                });
+                
+                document.getElementById('excelPreview').innerHTML = '';
+                document.getElementById('excelFile').value = '';
+            }).catch((error) => {
+                console.error('Erreur lors de l\'import:', error);
+                alert('❌ Erreur lors de l\'import: ' + error.message);
+            });
+        }
+
+        function getColumnValue(row, possibleNames) {
+            for (let name of possibleNames) {
+                if (row.hasOwnProperty(name) && row[name] !== null && row[name] !== undefined) {
+                    let value = String(row[name]).trim();
+                    if (value && value !== '' && value !== 'null' && value !== 'undefined') {
+                        return value;
+                    }
+                }
+            }
+            return '';
+        }
+
+        function displayEmployeesList() {
+            const container = document.getElementById('employeesList');
+            if (!container) return;
+
+            if (allEmployees.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-center py-8">Aucun employé trouvé</p>';
+                return;
+            }
+
+            container.innerHTML = allEmployees.map(employee => `
+                <div class="modern-card p-6 hover-scale">
+                    <div class="flex justify-between items-start">
+                        <div class="flex-1">
+                            <div class="flex items-center mb-3">
+                                <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-green-500 rounded-full flex items-center justify-center mr-3">
+                                    <span class="text-white font-semibold">${employee.firstName.charAt(0)}${employee.lastName.charAt(0)}</span>
+                                </div>
+                                <div>
+                                    <h3 class="font-semibold text-lg text-gray-800">${employee.firstName} ${employee.lastName}</h3>
+                                    <p class="text-gray-600 text-sm">ID: ${employee.employeeId}</p>
+                                </div>
+                            </div>
+                            
+                            <div class="space-y-2 text-sm">
+                                <div class="flex items-center">
+                                    <svg class="w-4 h-4 mr-2 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"></path>
+                                        <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"></path>
+                                    </svg>
+                                    ${employee.email ? `<span class="text-green-600 font-medium">${employee.email}</span>` : '<span class="text-red-500">AUCUN EMAIL</span>'}
+                                </div>
+                                ${employee.department ? `
+                                    <div class="flex items-center">
+                                        <svg class="w-4 h-4 mr-2 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M4 4a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2H4zm0 2h12v8H4V6z" clip-rule="evenodd"></path>
+                                        </svg>
+                                        <span class="text-gray-600">${employee.department}</span>
+                                    </div>
+                                ` : ''}
+                                ${employee.position ? `
+                                    <div class="flex items-center">
+                                        <svg class="w-4 h-4 mr-2 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M6 6V5a3 3 0 013-3h2a3 3 0 013 3v1h2a2 2 0 012 2v3.57A22.952 22.952 0 0110 13a22.95 22.95 0 01-8-1.43V8a2 2 0 012-2h2zm2-1a1 1 0 011-1h2a1 1 0 011 1v1H8V5zm1 5a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1z" clip-rule="evenodd"></path>
+                                        </svg>
+                                        <span class="text-gray-600">${employee.position}</span>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                        <button onclick="deleteEmployee('${employee.id}')" 
+                                class="ml-4 bg-gradient-to-r from-red-500 to-red-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:from-red-600 hover:to-red-700 transition-all">
+                            Supprimer
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function deleteEmployee(employeeId) {
+            if (!confirm('Êtes-vous sûr de vouloir supprimer cet employé ?')) return;
+
+            db.collection('employees').doc(employeeId).delete().then(() => {
+                alert('✅ Employé supprimé');
+                loadEmployees();
+                setTimeout(displayEmployeesList, 500);
+            }).catch((error) => {
+                alert('❌ Erreur: ' + error.message);
+            });
+        }
+
+        async function submitLeaveRequest() {
+            if (!db || !currentUser) {
+                alert('⏳ Veuillez vous connecter');
+                return;
+            }
+
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            const leaveType = document.getElementById('leaveType').value;
+            const reason = document.getElementById('reason').value;
+
+            if (!startDate || !endDate || !leaveType) {
+                alert('Veuillez remplir tous les champs obligatoires');
+                return;
+            }
+
+            if (new Date(startDate) > new Date(endDate)) {
+                alert('La date de début ne peut pas être postérieure à la date de fin');
+                return;
+            }
+
+            const submitButton = document.querySelector('button[type="submit"]');
+            if (submitButton) {
+                submitButton.disabled = true;
+                submitButton.textContent = 'Envoi en cours...';
+            }
+
+            try {
+                const docRef = await db.collection('leaveRequests').add({
+                    employeeName: `${currentUser.firstName} ${currentUser.lastName}`,
+                    employeeId: currentUser.employeeId,
+                    startDate: startDate,
+                    endDate: endDate,
+                    leaveType: leaveType,
+                    reason: reason,
+                    status: 'En attente',
+                    submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    userId: currentUser.id || currentUser.employeeId,
+                    submittedDate: new Date().toISOString()
+                });
+
+                console.log('Demande soumise avec ID:', docRef.id);
+                alert('✅ Demande de congé soumise avec succès !');
+                
+                const emailSent = await sendEmailNotification('newRequest', {
+                    employeeName: `${currentUser.firstName} ${currentUser.lastName}`,
+                    employeeId: currentUser.employeeId,
+                    leaveType: leaveType,
+                    startDate: startDate,
+                    endDate: endDate,
+                    reason: reason
+                });
+
+                if (!emailSent) {
+                    console.log('Email non envoyé mais demande enregistrée');
+                }
+                
+                document.getElementById('leaveForm').reset();
+                loadLeaveRequests();
+
+            } catch (error) {
+                console.error('Erreur lors de la soumission :', error);
+                alert('❌ Erreur: ' + error.message);
+            } finally {
+                if (submitButton) {
+                    submitButton.disabled = false;
+                    submitButton.textContent = 'Soumettre la demande';
+                }
+            }
+        }
+
+        function loadLeaveRequests() {
+            if (!db || !currentUser) return;
+
+            db.collection('leaveRequests')
+                .orderBy('submittedAt', 'desc')
+                .onSnapshot((querySnapshot) => {
+                    const requests = [];
+                    querySnapshot.forEach((doc) => {
+                        const data = doc.data();
+                        requests.push({ 
+                            id: doc.id, 
+                            ...data,
+                            submittedAt: data.submittedAt || new Date()
+                        });
+                    });
+                    
+                    if (currentTab === 'employer') {
+                        displayEmployerRequests(requests);
+                    } else if (currentTab === 'employee') {
+                        const userRequests = requests.filter(req => 
+                            req.userId === (currentUser.id || currentUser.employeeId) ||
+                            req.employeeId === currentUser.employeeId
+                        );
+                        displayEmployeeRequests(userRequests);
+                    }
+                }, (error) => {
+                    console.error('Erreur lors du chargement :', error);
+                });
+        }
+
+        function displayEmployeeRequests(requests) {
+            const container = document.getElementById('employeeRequests');
+            if (!container) return;
+            
+            if (requests.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-center py-8">Aucune demande de congé trouvée</p>';
+                return;
+            }
+
+            container.innerHTML = requests.map(request => `
+                <div class="modern-card p-6 hover-scale">
+                    <div class="flex justify-between items-start mb-4">
+                        <h3 class="font-semibold text-xl text-gray-800">${request.leaveType}</h3>
+                        <span class="status-badge ${getStatusStyle(request.status)}">
+                            ${request.status}
+                        </span>
+                    </div>
+                    <div class="space-y-3">
+                        <div class="flex items-center text-gray-600">
+                            <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span class="font-medium">Du ${formatDate(request.startDate)} au ${formatDate(request.endDate)}</span>
+                        </div>
+                        ${request.reason ? `
+                            <div class="flex items-start text-gray-700">
+                                <svg class="w-5 h-5 mr-2 mt-0.5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+                                </svg>
+                                <div>
+                                    <span class="font-medium">Motif :</span>
+                                    <p class="text-gray-600 mt-1">${request.reason}</p>
+                                </div>
+                            </div>
+                        ` : ''}
+                        <p class="text-sm text-gray-500 flex items-center">
+                            <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"></path>
+                            </svg>
+                            Soumise le ${formatDateTime(request.submittedAt)}
+                        </p>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function displayEmployerRequests(requests) {
+            const container = document.getElementById('employerRequests');
+            if (!container) return;
+            
+            if (requests.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-center py-8">Aucune demande de congé trouvée</p>';
+                return;
+            }
+
+            container.innerHTML = requests.map(request => `
+                <div class="modern-card p-6 hover-scale">
+                    <div class="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 class="font-semibold text-xl text-gray-800">${request.employeeName}</h3>
+                            <p class="text-gray-600 font-medium">${request.leaveType}</p>
+                            ${request.employeeId ? `<p class="text-sm text-gray-500">ID: ${request.employeeId}</p>` : ''}
+                        </div>
+                        <span class="status-badge ${getStatusStyle(request.status)}">
+                            ${request.status}
+                        </span>
+                    </div>
+                    <div class="space-y-3 mb-4">
+                        <div class="flex items-center text-gray-600">
+                            <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span class="font-medium">Du ${formatDate(request.startDate)} au ${formatDate(request.endDate)}</span>
+                        </div>
+                        ${request.reason ? `
+                            <div class="flex items-start text-gray-700">
+                                <svg class="w-5 h-5 mr-2 mt-0.5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+                                </svg>
+                                <div>
+                                    <span class="font-medium">Motif :</span>
+                                    <p class="text-gray-600 mt-1">${request.reason}</p>
+                                </div>
+                            </div>
+                        ` : ''}
+                        <p class="text-sm text-gray-500 flex items-center">
+                            <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"></path>
+                            </svg>
+                            Soumise le ${formatDateTime(request.submittedAt)}
+                        </p>
+                    </div>
+                    ${request.status === 'En attente' ? `
+                        <div class="flex space-x-3">
+                            <button onclick="updateRequestStatus('${request.id}', 'Approuvée')" 
+                                    class="btn-modern bg-gradient-to-r from-green-500 to-green-600 text-sm px-4 py-2">
+                                Approuver
+                            </button>
+                            <button onclick="updateRequestStatus('${request.id}', 'Refusée')" 
+                                    class="btn-modern bg-gradient-to-r from-red-500 to-red-600 text-sm px-4 py-2">
+                                Refuser
+                            </button>
+                        </div>
+                    ` : ''}
+                </div>
+            `).join('');
+        }
+
+        async function updateRequestStatus(requestId, status) {
+            if (!db) return;
+
+            try {
+                await loadEmployees();
+                
+                const doc = await db.collection('leaveRequests').doc(requestId).get();
+                
+                if (doc.exists) {
+                    const requestData = doc.data();
+                    const employee = allEmployees.find(emp => emp.employeeId === requestData.employeeId);
+                    const employeeEmail = employee?.email?.trim();
+                    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                    const isValidEmail = employeeEmail && emailRegex.test(employeeEmail);
+                    
+                    await db.collection('leaveRequests').doc(requestId).update({
+                        status: status,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+
+                    alert(`Demande ${status.toLowerCase()} avec succès !`);
+                    
+                    if (isValidEmail) {
+                        await sendEmployeeNotification(requestData, status, employeeEmail);
+                        showNotificationMessage(`Email envoyé au salarié: ${employeeEmail}`, 'success');
+                    } else {
+                        await sendEmployerNotification(requestData, status, 'no_employee_email');
+                        showNotificationMessage('Email envoyé à l\'employeur (salarié sans email)', 'success');
+                    }
+                    
+                } else {
+                    alert('Demande non trouvée');
+                }
+            } catch (error) {
+                console.error('Erreur lors de la mise à jour :', error);
+                alert('Erreur: ' + error.message);
+            }
+        }
+
+        async function sendEmployeeNotification(requestData, status, employeeEmail) {
+            const templateParams = {
+                to_email: employeeEmail,
+                from_name: 'Système de Gestion des Congés',
+                employee_name: requestData.employeeName,
+                employee_id: requestData.employeeId || 'N/A',
+                leave_type: requestData.leaveType,
+                start_date: formatDate(requestData.startDate),
+                end_date: formatDate(requestData.endDate),
+                reason: requestData.reason || 'Aucun motif spécifié',
+                status: status,
+                message: `Votre demande de congé de type "${requestData.leaveType}" du ${formatDate(requestData.startDate)} au ${formatDate(requestData.endDate)} a été ${status.toLowerCase()}.`,
+                subject: `Demande de congé ${status.toLowerCase()}`
+            };
+            
+            try {
+                const response = await emailjs.send(
+                    emailConfig.serviceId,
+                    emailConfig.templateId,
+                    templateParams
+                );
+                
+                console.log('Succès envoi salarié:', response);
+                return { success: true, recipient: employeeEmail, type: 'employee' };
+                
+            } catch (error) {
+                console.error('Erreur envoi salarié:', error);
+                return { success: false, error: error.text || error.message };
+            }
+        }
+
+        async function sendEmployerNotification(requestData, status, type) {
+            const templateParams = {
+                to_email: emailConfig.employerEmail,
+                from_name: 'Système de Gestion des Congés',
+                employee_name: requestData.employeeName,
+                employee_id: requestData.employeeId || 'N/A',
+                leave_type: requestData.leaveType,
+                start_date: formatDate(requestData.startDate),
+                end_date: formatDate(requestData.endDate),
+                reason: requestData.reason || 'Aucun motif spécifié',
+                status: status,
+                message: type === 'no_employee_email' 
+                    ? `La demande de congé de ${requestData.employeeName} a été ${status.toLowerCase()}. L'employé n'a pas d'email configuré.`
+                    : `Demande de congé ${status.toLowerCase()} pour ${requestData.employeeName}.`,
+                subject: `[EMPLOYEUR] Demande ${status.toLowerCase()} - ${requestData.employeeName}`
+            };
+            
+            try {
+                const response = await emailjs.send(
+                    emailConfig.serviceId,
+                    emailConfig.templateId,
+                    templateParams
+                );
+                
+                return { success: true, recipient: emailConfig.employerEmail, type: 'employer' };
+                
+            } catch (error) {
+                return { success: false, error: error.text || error.message };
+            }
+        }
+
+        function getStatusStyle(status) {
+            switch (status) {
+                case 'En attente': return 'bg-yellow-100 text-yellow-800';
+                case 'Approuvée': return 'bg-green-100 text-green-800';
+                case 'Refusée': return 'bg-red-100 text-red-800';
+                default: return 'bg-gray-100 text-gray-800';
+            }
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return 'Date inconnue';
+            return new Date(dateString).toLocaleDateString('fr-FR');
+        }
+
+        function formatDateTime(timestamp) {
+            if (!timestamp) return 'Date inconnue';
+            if (timestamp.toDate) return timestamp.toDate().toLocaleString('fr-FR');
+            if (timestamp instanceof Date) return timestamp.toLocaleString('fr-FR');
+            return new Date(timestamp).toLocaleString('fr-FR');
+        }
+
+        // Initialisation
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM chargé, initialisation...');
+            
+            if (typeof firebase === 'undefined') {
+                document.getElementById('firebaseStatus').innerHTML = `
+                    <div class="modern-card p-4 mb-6 border-l-4 border-red-500">
+                        <div class="flex items-center">
+                            <svg class="w-5 h-5 text-red-500 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+                            </svg>
+                            <div>
+                                <p class="font-semibold text-red-800">Firebase non chargé</p>
+                                <p class="text-red-700 text-sm">Veuillez rafraîchir la page</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            if (typeof emailjs === 'undefined') {
+                console.warn('EmailJS non chargé');
+                updateNotificationStatus(false);
+            }
+
+            initializeFirebaseApp();
+            updateTabsVisibility();
+            showTab('login');
+            
+            const today = new Date().toISOString().split('T')[0];
+            const startDateInput = document.getElementById('startDate');
+            const endDateInput = document.getElementById('endDate');
+            
+            if (startDateInput) startDateInput.min = today;
+            if (endDateInput) endDateInput.min = today;
+            
+            if (startDateInput && endDateInput) {
+                startDateInput.addEventListener('change', function() {
+                    endDateInput.min = this.value;
+                    if (endDateInput.value && endDateInput.value < this.value) {
+                        endDateInput.value = this.value;
+                    }
+                });
+            }
+
+            document.getElementById('loginEmployeeId').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') loginEmployee();
+            });
+            
+            document.getElementById('loginPassword').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') loginEmployer();
+            });
+        });
+    </script>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 font-modern">
+    <!-- Background pattern -->
+    <div class="absolute inset-0 opacity-5">
+        <svg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+            <g fill="none" fill-rule="evenodd">
+                <g fill="#1e40af" fill-opacity="0.1">
+                    <circle cx="30" cy="30" r="1"/>
+                </g>
+            </g>
+        </svg>
+    </div>
+
+    <div class="relative z-10 container mx-auto px-4 py-8">
+        <!-- Header moderne avec logo -->
+        <header class="text-center mb-12">
+            <div class="mb-6">
+                <!-- Logo Gaz Service -->
+                <div class="flex items-center justify-center mb-4">
+                    <div class="flex items-center space-x-3">
+                        <!-- Icône flamme stylisée -->
+                        <div class="relative">
+                            <svg width="50" height="50" viewBox="0 0 60 60" class="drop-shadow-lg">
+                                <!-- Flamme principale -->
+                                <path d="M30 10 C20 15, 15 25, 20 35 C15 30, 25 45, 30 50 C35 45, 45 30, 40 35 C45 25, 40 15, 30 10 Z" 
+                                      fill="url(#flameGradient)" stroke="url(#flameStroke)" stroke-width="1"/>
+                                <!-- Flamme intérieure -->
+                                <path d="M30 18 C25 22, 22 28, 25 35 C22 32, 28 40, 30 42 C32 40, 38 32, 35 35 C38 28, 35 22, 30 18 Z" 
+                                      fill="url(#innerFlame)"/>
+                                <defs>
+                                    <linearGradient id="flameGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                                        <stop offset="0%" style="stop-color:#3b82f6"/>
+                                        <stop offset="100%" style="stop-color:#10b981"/>
+                                    </linearGradient>
+                                    <linearGradient id="flameStroke" x1="0%" y1="0%" x2="0%" y2="100%">
+                                        <stop offset="0%" style="stop-color:#1e40af"/>
+                                        <stop offset="100%" style="stop-color:#059669"/>
+                                    </linearGradient>
+                                    <radialGradient id="innerFlame" cx="50%" cy="30%" r="50%">
+                                        <stop offset="0%" style="stop-color:#60a5fa"/>
+                                        <stop offset="100%" style="stop-color:#34d399"/>
+                                    </radialGradient>
+                                </defs>
+                            </svg>
+                        </div>
+                        <!-- Texte du logo -->
+                        <div class="text-left">
+                            <h1 class="text-3xl font-bold text-gaz-blue">Gaz Service</h1>
+                            <p class="text-gaz-green font-medium text-sm">groupe Energie Service</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="h-1 w-24 bg-gradient-to-r from-gaz-blue to-gaz-green mx-auto rounded-full"></div>
+            </div>
+            <h2 class="text-2xl font-bold text-gray-800 mb-3">Gestion des Congés</h2>
+            <p class="text-gray-600 mb-4">Système de gestion avec identifiants salariés</p>
+            <div id="notificationStatus"></div>
+        </header>
+
+        <!-- Status Firebase -->
+        <div id="firebaseStatus">
+            <div class="modern-card p-4 mb-6 border-l-4 border-blue-500">
+                <div class="flex items-center">
+                    <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500 mr-3"></div>
+                    <div>
+                        <p class="font-semibold text-blue-800">Initialisation Firebase...</p>
+                        <p class="text-blue-700 text-sm">Connexion en cours...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Informations utilisateur connecté -->
+        <div id="userInfo"></div>
+
+        <!-- Onglets modernes -->
+        <div class="flex justify-center mb-8">
+            <div class="glass-effect rounded-2xl p-2 shadow-modern">
+                <div class="flex space-x-2">
+                    <button id="loginTab" onclick="showTab('login')" 
+                            class="tab-modern active">
+                        <div class="flex items-center space-x-2">
+                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M3 3a1 1 0 011 1v12a1 1 0 11-2 0V4a1 1 0 011-1zm7.707 3.293a1 1 0 010 1.414L9.414 9H17a1 1 0 110 2H9.414l1.293 1.293a1 1 0 01-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span>Connexion</span>
+                        </div>
+                    </button>
+                    <button id="employeeTab" onclick="showTab('employee')" 
+                            class="tab-modern">
+                        <div class="flex items-center space-x-2">
+                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span>Salarié</span>
+                        </div>
+                    </button>
+                    <button id="employerTab" onclick="showTab('employer')" 
+                            class="tab-modern">
+                        <div class="flex items-center space-x-2">
+                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.916A5.986 5.986 0 0010 16a5.986 5.986 0 004.546-2.084A5 5 0 0010 11z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span>Employeur</span>
+                        </div>
+                    </button>
+                    <button id="adminTab" onclick="showTab('admin')" 
+                            class="tab-modern">
+                        <div class="flex items-center space-x-2">
+                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span>Administration</span>
+                        </div>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Panel Connexion -->
+        <div id="loginPanel" class="hidden">
+            <div class="max-w-md mx-auto space-y-6">
+                <!-- Connexion Salarié -->
+                <div class="modern-card p-8 hover-scale">
+                    <div class="text-center mb-6">
+                        <div class="w-16 h-16 bg-gradient-to-br from-blue-500 to-green-500 rounded-full mx-auto mb-4 flex items-center justify-center">
+                            <svg class="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                        <h2 class="text-2xl font-semibold text-gray-800 mb-2">Connexion Salarié</h2>
+                        <p class="text-gray-600 text-sm">Connectez-vous avec votre identifiant</p>
+                    </div>
+                    
+                    <!-- Indicateur nombre d'employés -->
+                    <div class="bg-gradient-to-r from-blue-50 to-green-50 p-4 rounded-xl mb-6 border border-blue-100">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center">
+                                <svg class="w-5 h-5 text-blue-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3z"></path>
+                                </svg>
+                                <span id="employeeCount" class="text-blue-700 font-medium text-sm">Chargement des employés...</span>
+                            </div>
+                            <button onclick="loadEmployees(); setTimeout(updateEmployeeCount, 1000);" 
+                                    class="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                                Actualiser
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label for="loginEmployeeId" class="block text-sm font-semibold text-gray-700 mb-2">
+                                Identifiant employé
+                            </label>
+                            <input type="text" id="loginEmployeeId" 
+                                   class="input-modern w-full"
+                                   placeholder="Votre identifiant">
+                        </div>
+                        
+                        <div class="flex space-x-3">
+                            <button onclick="loginEmployee()" 
+                                    class="btn-modern flex-1">
+                                Se connecter
+                            </button>
+                            <button onclick="showAvailableIds()" 
+                                    class="btn-modern bg-gradient-to-r from-gray-500 to-gray-600 px-4 text-sm">
+                                Voir IDs
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Connexion Employeur -->
+                <div class="modern-card p-8 hover-scale">
+                    <div class="text-center mb-6">
+                        <div class="w-16 h-16 bg-gradient-to-br from-green-500 to-blue-500 rounded-full mx-auto mb-4 flex items-center justify-center">
+                            <svg class="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.916A5.986 5.986 0 0010 16a5.986 5.986 0 004.546-2.084A5 5 0 0010 11z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                        <h2 class="text-2xl font-semibold text-gray-800 mb-2">Connexion Employeur</h2>
+                        <p class="text-gray-600 text-sm">Accès administrateur</p>
+                    </div>
+                    <div class="space-y-4">
+                        <div>
+                            <label for="loginPassword" class="block text-sm font-semibold text-gray-700 mb-2">
+                                Mot de passe
+                            </label>
+                            <input type="password" id="loginPassword" 
+                                   class="input-modern w-full"
+                                   placeholder="admin123">
+                        </div>
+                        <button onclick="loginEmployer()" 
+                                class="btn-modern w-full bg-gradient-to-r from-green-500 to-green-600">
+                            Se connecter
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Panel Salarié -->
+        <div id="employeePanel" class="hidden">
+            <div class="max-w-4xl mx-auto space-y-8">
+                <!-- Nouvelle demande -->
+                <div class="modern-card p-8 hover-scale">
+                    <div class="text-center mb-8">
+                        <div class="w-16 h-16 bg-gradient-to-br from-blue-500 to-green-500 rounded-full mx-auto mb-4 flex items-center justify-center">
+                            <svg class="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                        <h2 class="text-2xl font-semibold text-gray-800 mb-2">Nouvelle demande de congé</h2>
+                        <p class="text-gray-600">Remplissez le formulaire pour soumettre votre demande</p>
+                    </div>
+                    
+                    <form id="leaveForm" class="space-y-6" onsubmit="event.preventDefault(); submitLeaveRequest();">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label for="startDate" class="block text-sm font-semibold text-gray-700 mb-2">
+                                    Date de début *
+                                </label>
+                                <input type="date" id="startDate" required
+                                       class="input-modern w-full">
+                            </div>
+                            <div>
+                                <label for="endDate" class="block text-sm font-semibold text-gray-700 mb-2">
+                                    Date de fin *
+                                </label>
+                                <input type="date" id="endDate" required
+                                       class="input-modern w-full">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label for="leaveType" class="block text-sm font-semibold text-gray-700 mb-2">
+                                Type de congé *
+                            </label>
+                            <select id="leaveType" required
+                                    class="input-modern w-full">
+                                <option value="">Sélectionner un type</option>
+                                <option value="Congés payés">Congés payés</option>
+                                <option value="Congé maladie">Congé maladie</option>
+                                <option value="Congé maternité/paternité">Congé maternité/paternité</option>
+                                <option value="Congé sans solde">Congé sans solde</option>
+                                <option value="RTT">RTT</option>
+                                <option value="Autre">Autre</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label for="reason" class="block text-sm font-semibold text-gray-700 mb-2">
+                                Motif (optionnel)
+                            </label>
+                            <textarea id="reason" rows="4"
+                                      class="input-modern w-full resize-none"
+                                      placeholder="Précisez le motif de votre demande..."></textarea>
+                        </div>
+
+                        <button type="submit"
+                                class="btn-modern w-full text-lg py-4">
+                            Soumettre la demande
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Mes demandes -->
+                <div class="modern-card p-8">
+                    <div class="flex items-center justify-between mb-8">
+                        <div>
+                            <h2 class="text-2xl font-semibold text-gray-800">Mes demandes de congés</h2>
+                            <p class="text-gray-600">Suivez l'état de vos demandes</p>
+                        </div>
+                        <div class="w-12 h-12 bg-gradient-to-br from-blue-500 to-green-500 rounded-full flex items-center justify-center">
+                            <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div id="employeeRequests" class="space-y-4">
+                        <div class="text-center py-8">
+                            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                            <p class="text-gray-500">Chargement...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Panel Employeur -->
+        <div id="employerPanel" class="hidden">
+            <div class="max-w-6xl mx-auto">
+                <div class="modern-card p-8">
+                    <div class="flex items-center justify-between mb-8">
+                        <div>
+                            <h2 class="text-2xl font-semibold text-gray-800">Gestion des demandes de congés</h2>
+                            <p class="text-gray-600">Approuvez ou refusez les demandes de vos employés</p>
+                        </div>
+                        <div class="w-12 h-12 bg-gradient-to-br from-green-500 to-blue-500 rounded-full flex items-center justify-center">
+                            <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div id="employerRequests" class="space-y-4">
+                        <div class="text-center py-8">
+                            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto mb-4"></div>
+                            <p class="text-gray-500">Chargement...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Panel Administration -->
+        <div id="adminPanel" class="hidden">
+            <div class="max-w-6xl mx-auto space-y-8">
+                
+                <!-- Configuration Email -->
+                <div class="modern-card p-8 hover-scale">
+                    <div class="flex items-center justify-between mb-8">
+                        <div>
+                            <h2 class="text-2xl font-semibold text-gray-800">Configuration des notifications email</h2>
+                            <p class="text-gray-600">Configurez EmailJS pour les notifications automatiques</p>
+                        </div>
+                        <div class="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center">
+                            <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"></path>
+                                <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+                        <div class="flex items-start">
+                            <svg class="w-5 h-5 text-red-500 mr-3 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                            </svg>
+                            <div>
+                                <p class="font-semibold text-red-800 mb-2">PROBLÈME DÉTECTÉ</p>
+                                <p class="text-sm text-red-700 mb-3">Les emails destinés aux salariés arrivent chez l'employeur.</p>
+                                <p class="text-xs text-red-600"><strong>Cause :</strong> Votre template EmailJS a probablement une adresse fixe au lieu d'utiliser {{to_email}}</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
+                        <div class="flex items-start">
+                            <svg class="w-5 h-5 text-blue-500 mr-3 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+                            </svg>
+                            <div>
+                                <p class="font-semibold text-blue-800 mb-2">SOLUTION - Vérifiez votre template EmailJS :</p>
+                                <ol class="text-sm text-blue-700 list-decimal list-inside space-y-1 mb-3">
+                                    <li>Allez sur <a href="https://emailjs.com" target="_blank" class="underline font-medium">EmailJS.com</a> → Email Templates</li>
+                                    <li>Ouvrez votre template actuel</li>
+                                    <li><strong>VÉRIFIEZ que "To Email" = {{to_email}}</strong> (pas une adresse fixe)</li>
+                                    <li>Si c'est une adresse fixe → Changez en {{to_email}}</li>
+                                    <li>Sauvegardez et testez</li>
+                                </ol>
+                                <div class="bg-yellow-100 border border-yellow-300 rounded-lg p-3">
+                                    <p class="text-xs text-yellow-800">
+                                        <strong>Si le problème persiste :</strong> Créez un NOUVEAU template avec "To Email" = {{to_email}} et utilisez son nouvel ID ci-dessous.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="emailStatus" class="mb-6"></div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                        <div>
+                            <label for="emailServiceId" class="block text-sm font-semibold text-gray-700 mb-2">
+                                Service ID *
+                            </label>
+                            <input type="text" id="emailServiceId" 
+                                   class="input-modern w-full"
+                                   placeholder="service_xxx">
+                        </div>
+                        
+                        <div>
+                            <label for="emailTemplateId" class="block text-sm font-semibold text-gray-700 mb-2">
+                                Template ID * <span class="text-red-600 text-xs">(Vérifiez que ce template a "To Email" = {{to_email}})</span>
+                            </label>
+                            <input type="text" id="emailTemplateId" 
+                                   class="input-modern w-full"
+                                   placeholder="template_xxx">
+                        </div>
+                        
+                        <div>
+                            <label for="emailPublicKey" class="block text-sm font-semibold text-gray-700 mb-2">
+                                Public Key *
+                            </label>
+                            <input type="text" id="emailPublicKey" 
+                                   class="input-modern w-full"
+                                   placeholder="Votre clé publique">
+                        </div>
+                        
+                        <div>
+                            <label for="employerEmail" class="block text-sm font-semibold text-gray-700 mb-2">
+                                Email employeur *
+                            </label>
+                            <input type="email" id="employerEmail" 
+                                   class="input-modern w-full"
+                                   placeholder="employeur@entreprise.com">
+                        </div>
+                    </div>
+                    
+                    <div class="flex space-x-3 mb-6">
+                        <button onclick="saveEmailConfig()" 
+                                class="btn-modern bg-gradient-to-r from-green-500 to-green-600">
+                            💾 Sauvegarder la configuration
+                        </button>
+                        <button onclick="testEmailSending()" 
+                                class="btn-modern bg-gradient-to-r from-blue-500 to-blue-600">
+                            📧 Tester l'envoi
+                        </button>
+                        <button onclick="resetEmailConfig()" 
+                                class="btn-modern bg-gradient-to-r from-red-500 to-red-600 text-sm px-4">
+                            🗑️ Réinitialiser
+                        </button>
+                    </div>
+                    
+                    <div class="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                        <p class="font-semibold text-gray-800 mb-3">Template EmailJS correct :</p>
+                        <div class="text-sm text-gray-700 space-y-2">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <p><strong>To Email :</strong> <code class="bg-blue-100 text-blue-800 px-2 py-1 rounded">{{to_email}}</code> ← CRUCIAL</p>
+                                    <p><strong>From Name :</strong> <code class="bg-gray-100 text-gray-800 px-2 py-1 rounded">{{from_name}}</code></p>
+                                    <p><strong>Subject :</strong> <code class="bg-gray-100 text-gray-800 px-2 py-1 rounded">{{subject}}</code></p>
+                                </div>
+                                <div>
+                                    <p class="mb-1"><strong>Variables disponibles :</strong></p>
+                                    <div class="text-xs space-y-1">
+                                        <code class="bg-gray-100 text-gray-800 px-1 py-0.5 rounded">{{employee_name}}</code>
+                                        <code class="bg-gray-100 text-gray-800 px-1 py-0.5 rounded">{{employee_id}}</code>
+                                        <code class="bg-gray-100 text-gray-800 px-1 py-0.5 rounded">{{leave_type}}</code><br>
+                                        <code class="bg-gray-100 text-gray-800 px-1 py-0.5 rounded">{{start_date}}</code>
+                                        <code class="bg-gray-100 text-gray-800 px-1 py-0.5 rounded">{{end_date}}</code>
+                                        <code class="bg-gray-100 text-gray-800 px-1 py-0.5 rounded">{{reason}}</code><br>
+                                        <code class="bg-gray-100 text-gray-800 px-1 py-0.5 rounded">{{message}}</code>
+                                        <code class="bg-gray-100 text-gray-800 px-1 py-0.5 rounded">{{status}}</code>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Import Excel -->
+                <div class="modern-card p-8 hover-scale">
+                    <div class="flex items-center justify-between mb-8">
+                        <div>
+                            <h2 class="text-2xl font-semibold text-gray-800">Import des employés (Excel)</h2>
+                            <p class="text-gray-600">Importez votre liste d'employés depuis un fichier Excel</p>
+                        </div>
+                        <div class="w-12 h-12 bg-gradient-to-br from-green-500 to-blue-500 rounded-full flex items-center justify-center">
+                            <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-6">
+                        <div class="flex items-start">
+                            <svg class="w-5 h-5 text-yellow-500 mr-3 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                            </svg>
+                            <div>
+                                <p class="font-semibold text-yellow-800 mb-2">Format Excel attendu</p>
+                                <p class="text-sm text-yellow-700">
+                                    Colonnes avec headers comme : <strong>ID/Identifiant</strong>, <strong>Prénom/First Name</strong>, <strong>Nom/Last Name</strong>, <strong>Email</strong>, <strong>Service/Department</strong>, <strong>Poste/Position</strong>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-6">
+                        <div>
+                            <label for="excelFile" class="block text-sm font-semibold text-gray-700 mb-2">
+                                Sélectionner un fichier Excel
+                            </label>
+                            <div class="relative">
+                                <input type="file" id="excelFile" accept=".xlsx,.xls" 
+                                       onchange="handleExcelFile(event)"
+                                       class="input-modern w-full file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                            </div>
+                        </div>
+                        
+                        <div id="excelPreview"></div>
+                    </div>
+                </div>
+
+                <!-- Liste des employés -->
+                <div class="modern-card p-8">
+                    <div class="flex items-center justify-between mb-8">
+                        <div>
+                            <h2 class="text-2xl font-semibold text-gray-800">Liste des employés</h2>
+                            <p class="text-gray-600">Gérez vos employés enregistrés</p>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <button onclick="loadEmployees(); setTimeout(displayEmployeesList, 500);" 
+                                    class="btn-modern bg-gradient-to-r from-blue-500 to-blue-600 text-sm px-4 py-2">
+                                🔄 Actualiser
+                            </button>
+                            <div class="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
+                                <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3z"></path>
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="employeesList" class="space-y-4">
+                        <div class="text-center py-8">
+                            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500 mx-auto mb-4"></div>
+                            <p class="text-gray-500">Chargement...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer moderne -->
+    <footer class="mt-16 py-8 border-t border-gray-200 bg-white/50 backdrop-blur-sm">
+        <div class="container mx-auto px-4 text-center">
+            <div class="flex items-center justify-center mb-4">
+                <div class="flex items-center space-x-2">
+                    <!-- Mini logo flamme -->
+                    <svg width="24" height="24" viewBox="0 0 60 60">
+                        <path d="M30 10 C20 15, 15 25, 20 35 C15 30, 25 45, 30 50 C35 45, 45 30, 40 35 C45 25, 40 15, 30 10 Z" 
+                              fill="url(#footerFlameGradient)" stroke="none"/>
+                        <defs>
+                            <linearGradient id="footerFlameGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" style="stop-color:#3b82f6"/>
+                                <stop offset="100%" style="stop-color:#10b981"/>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                    <span class="font-semibold text-gray-700">Gaz Service</span>
+                </div>
+            </div>
+            <p class="text-gray-600 text-sm">
+                Système de gestion des congés - Version modernisée
+            </p>
+            <p class="text-gray-500 text-xs mt-2">
+                © 2025 Gaz Service - groupe Energie Service. Interface moderne et intuitive.
+            </p>
+        </div>
+    </footer>
+</body>
+</html>
